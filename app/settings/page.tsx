@@ -2,8 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { Bell, ChevronRight, Database, Globe, LogOut, MoonStar, RefreshCw, ShieldCheck, SlidersHorizontal, Sparkles } from 'lucide-react'
-import { createClient } from '@/lib/supabase/client'
+import { Bell, ChevronRight, Database, MoonStar, RefreshCw, ShieldCheck, SlidersHorizontal, Sparkles } from 'lucide-react'
 import { saveUserPreferences } from '@/lib/supabase/database'
 
 type SettingsState = {
@@ -25,9 +24,8 @@ const defaultSettings: SettingsState = {
 export default function SettingsPage() {
   const [settings, setSettings] = useState<SettingsState>(defaultSettings)
   const [mounted, setMounted] = useState(false)
-  const [session, setSession] = useState<any>(null)
   const [authError, setAuthError] = useState('')
-  const hasSupabaseAuth = Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)
+  const [accountStatus, setAccountStatus] = useState<'development' | 'ready'>('development')
 
   useEffect(() => {
     const saved = localStorage.getItem('alpha-research-settings')
@@ -42,33 +40,18 @@ export default function SettingsPage() {
   }, [])
 
   useEffect(() => {
-    if (!hasSupabaseAuth) return
-
-    const supabase = createClient()
-
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session)
-    })
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      setSession(nextSession)
-    })
-
-    return () => subscription.unsubscribe()
-  }, [hasSupabaseAuth])
-
-  useEffect(() => {
     if (!mounted) return
     localStorage.setItem('alpha-research-settings', JSON.stringify(settings))
   }, [settings, mounted])
 
   useEffect(() => {
-    if (!mounted || !session?.user?.id) return
+    if (!mounted || accountStatus !== 'ready') return
 
-    saveUserPreferences(session.user.id, settings).catch((err) => {
+    const userId = 'local-dev-user'
+    saveUserPreferences(userId, settings).catch((err) => {
       console.error('同步使用者設定到 Supabase 失敗:', err)
     })
-  }, [settings, session?.user?.id, mounted])
+  }, [settings, mounted, accountStatus])
 
   const updateSetting = <K extends keyof SettingsState>(key: K, value: SettingsState[K]) => {
     setSettings((prev) => ({ ...prev, [key]: value }))
@@ -95,40 +78,9 @@ export default function SettingsPage() {
     },
   ] as const
 
-  const handleGoogleLogin = async () => {
-    if (!hasSupabaseAuth) {
-      setAuthError('尚未設定 Supabase 環境變數，請先填入 NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY')
-      return
-    }
-
-    setAuthError('')
-
-    try {
-      const supabase = createClient()
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: `${window.location.origin}/auth/callback`,
-        },
-      })
-
-      if (error) {
-        throw error
-      }
-    } catch (err) {
-      setAuthError(err instanceof Error ? err.message : 'Google 登入失敗')
-    }
-  }
-
-  const handleSignOut = async () => {
-    try {
-      const supabase = createClient()
-      const { error } = await supabase.auth.signOut()
-      if (error) throw error
-      setSession(null)
-    } catch (err) {
-      setAuthError(err instanceof Error ? err.message : '登出失敗')
-    }
+  const handleAccountDevelopment = () => {
+    setAuthError('帳號功能目前開發中，請稍後再試。')
+    setAccountStatus('development')
   }
 
   return (
@@ -155,46 +107,23 @@ export default function SettingsPage() {
               </div>
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-400">Account</p>
-                <h2 className="text-lg font-bold">Google 帳號</h2>
+                <h2 className="text-lg font-bold">Email 帳號</h2>
               </div>
             </div>
 
-            {session?.user ? (
-              <div className="flex items-center gap-3">
-                <div className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-300">
-                  已登入
-                </div>
-                <button
-                  type="button"
-                  onClick={handleSignOut}
-                  className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-xs font-medium text-neutral-200 transition hover:bg-white/10"
-                >
-                  <LogOut className="h-3.5 w-3.5" />
-                  登出
-                </button>
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={handleGoogleLogin}
-                className="inline-flex items-center gap-2 rounded-full bg-white px-3.5 py-2 text-xs font-bold text-slate-900 transition hover:bg-slate-100"
-              >
-                <Globe className="h-3.5 w-3.5" />
-                Google 登入
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={handleAccountDevelopment}
+              className="inline-flex items-center gap-2 rounded-full border border-yellow-500/40 bg-yellow-500/10 px-3.5 py-2 text-xs font-bold text-yellow-300 transition hover:bg-yellow-500/15"
+            >
+              帳號功能開發中
+            </button>
           </div>
 
-          {session?.user ? (
-            <div className="mt-5 rounded-2xl border border-emerald-500/30 bg-emerald-500/5 p-4 text-sm text-emerald-100">
-              <div className="font-semibold">登入帳號</div>
-              <div className="mt-1 text-emerald-200/90">{session.user.email || 'Google 使用者'}</div>
-            </div>
-          ) : (
-            <div className="mt-5 rounded-2xl border border-white/10 bg-slate-950/70 p-4 text-sm text-neutral-300">
-              目前尚未登入，點擊 Google 登入即可綁定帳號並啟用個人化設定。
-            </div>
-          )}
+          <div className="mt-5 rounded-2xl border border-yellow-500/30 bg-yellow-500/5 p-4 text-sm text-yellow-100">
+            <div className="font-semibold">帳號功能狀態</div>
+            <div className="mt-1 text-yellow-200/90">目前正在開發中，暫不提供登入與帳戶綁定。</div>
+          </div>
 
           {authError && (
             <div className="mt-4 rounded-2xl border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-300">
